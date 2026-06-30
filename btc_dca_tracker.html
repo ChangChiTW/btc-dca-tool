@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+
+    <title>BTC DCA FGI Tracker</title>
+
+    <style>
+      body {
+        font-family: Arial;
+        max-width: 600px;
+        margin: 30px auto;
+        padding: 20px;
+      }
+
+      input,
+      button {
+        width: 100%;
+        padding: 12px;
+        margin: 6px 0;
+        font-size: 16px;
+      }
+
+      .card {
+        background: #f4f4f4;
+        padding: 15px;
+        border-radius: 10px;
+        margin-top: 15px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      td,
+      th {
+        border-bottom: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h2>₿ BTC 熊市 DCA FGI Tracker</h2>
+
+    日期
+
+    <input id="date" type="date" />
+
+    目前 FGI（Alternative.me）
+
+    <input id="fgi" type="number" />
+
+    <div id="fgiStatus"></div>
+
+    <button onclick="calculate()">計算今日投入</button>
+
+    <div class="card" id="result">等待計算...</div>
+
+    <div class="card">
+      <h3>資金進度</h3>
+
+      <div id="fund"></div>
+    </div>
+
+    <div class="card">
+      <h3>投入紀錄</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>FGI</th>
+            <th>B</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+
+        <tbody id="history"></tbody>
+      </table>
+
+      <button onclick="clearData()">清除紀錄</button>
+    </div>
+
+    <script>
+      const totalBudget = 12000
+
+      const monthlyB = {
+        7: 1000,
+        8: 1200,
+        9: 1400,
+        10: 2400,
+        11: 1410,
+      }
+
+      let records = JSON.parse(localStorage.getItem('btc_records')) || []
+
+      // =====================
+      // 自動抓 Alternative.me FGI
+      // =====================
+
+      async function getFGI() {
+        try {
+          let response = await fetch('https://api.alternative.me/fng/?limit=1')
+
+          let data = await response.json()
+
+          let value = Number(data.data[0].value)
+
+          document.getElementById('fgi').value = value
+
+          let text = data.data[0].value_classification
+
+          document.getElementById('fgiStatus').innerHTML = `
+目前市場：
+
+<b>${text}</b>
+<br>
+FGI = ${value}
+
+`
+        } catch (error) {
+          document.getElementById('fgiStatus').innerHTML = 'FGI 自動取得失敗，請手動輸入'
+        }
+      }
+
+      function getB(fgi) {
+        if (fgi < 5) return 130
+
+        if (fgi < 15) return 90
+
+        if (fgi < 30) return 60
+
+        if (fgi < 50) return 25
+
+        return 0
+      }
+
+      function calculate() {
+        let date = document.getElementById('date').value
+
+        let fgi = Number(document.getElementById('fgi').value)
+
+        if (!date) {
+          alert('請選日期')
+
+          return
+        }
+
+        let month = new Date(date).getMonth() + 1
+
+        let usedB = records
+
+          .filter(x => new Date(x.date).getMonth() + 1 === month)
+
+          .reduce((a, b) => a + b.B, 0)
+
+        let quota = monthlyB[month] || 0
+
+        let B = getB(fgi)
+
+        if (B > quota - usedB) {
+          B = Math.max(0, quota - usedB)
+        }
+
+        let total = 30 + B
+
+        records.push({
+          date,
+
+          fgi,
+
+          B,
+
+          total,
+        })
+
+        localStorage.setItem(
+          'btc_records',
+
+          JSON.stringify(records),
+        )
+
+        show()
+      }
+
+      function show() {
+        let used = records.reduce((a, b) => a + b.total, 0)
+
+        document.getElementById('fund').innerHTML = `
+
+已投入：
+
+<b>${used} USDT</b>
+
+<br><br>
+
+
+剩餘：
+
+<b>${totalBudget - used} USDT</b>
+
+<br><br>
+
+
+完成：
+
+<b>${((used / totalBudget) * 100).toFixed(1)}%</b>
+
+
+`
+
+        let html = ''
+
+        records.forEach(x => {
+          html += `
+
+<tr>
+
+<td>${x.date}</td>
+
+<td>${x.fgi}</td>
+
+<td>${x.B}</td>
+
+<td>${x.total}</td>
+
+
+</tr>
+
+
+`
+        })
+
+        document.getElementById('history').innerHTML = html
+      }
+
+      function clearData() {
+        if (confirm('清除全部紀錄？')) {
+          localStorage.removeItem('btc_records')
+
+          records = []
+
+          show()
+        }
+      }
+
+      // 初始化
+
+      document.getElementById('date').value = new Date().toISOString().slice(0, 10)
+
+      getFGI()
+
+      show()
+    </script>
+  </body>
+</html>
