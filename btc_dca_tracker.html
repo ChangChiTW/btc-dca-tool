@@ -154,17 +154,15 @@
 
       const monthlyB = {
         7: 1000,
-
         8: 1200,
-
         9: 1400,
-
         10: 2400,
-
         11: 1410,
       }
 
-      let records = JSON.parse(localStorage.getItem('btc_records')) || []
+      // 重新讀取資料
+
+      let records = JSON.parse(localStorage.getItem('btc_records') || '[]')
 
       async function getFGI() {
         try {
@@ -174,9 +172,9 @@
 
           let value = Number(data.data[0].value)
 
-          fgi.value = value
+          document.getElementById('fgi').value = value
 
-          fgiStatus.innerHTML = `
+          document.getElementById('fgiStatus').innerHTML = `
 
 市場：
 
@@ -188,7 +186,7 @@ FGI = ${value}
 
 `
         } catch {
-          fgiStatus.innerHTML = 'FGI取得失敗，請手動輸入'
+          document.getElementById('fgiStatus').innerHTML = 'FGI取得失敗，請手動輸入'
         }
       }
 
@@ -204,44 +202,54 @@ FGI = ${value}
         return 0
       }
 
-      function getMonthInfo(month) {
-        let previous = 0
+      function todayInvested() {
+        let today = document.getElementById('date').value
 
-        for (let m = 7; m < month; m++) {
-          let quota = monthlyB[m] || 0
-
-          let used = records
-
-            .filter(x => new Date(x.date).getMonth() + 1 === m)
-
-            .reduce((a, b) => a + b.B, 0)
-
-          previous += Math.max(0, quota - used)
-        }
-
-        return previous
+        return records.find(x => x.date === today)
       }
 
       function calculate() {
-        let dateValue = date.value
+        let dateValue = document.getElementById('date').value
 
-        let fgiValue = Number(fgi.value)
+        let fgiValue = Number(document.getElementById('fgi').value)
+
+        if (!dateValue) {
+          alert('請選日期')
+
+          return
+        }
+
+        // 防止重複投入
+
+        let exist = records.find(x => x.date === dateValue)
+
+        if (exist) {
+          alert(`今天已投入 ${exist.total} USDT`)
+
+          show()
+
+          return
+        }
 
         let month = new Date(dateValue).getMonth() + 1
 
-        let quota = (monthlyB[month] || 0) + getMonthInfo(month)
-
-        let used = records
+        let usedB = records
 
           .filter(x => new Date(x.date).getMonth() + 1 === month)
 
           .reduce((a, b) => a + b.B, 0)
 
+        let carry = getCarry(month)
+
+        let quota = (monthlyB[month] || 0) + carry
+
         let B = getB(fgiValue)
 
-        let remain = Math.max(0, quota - used)
+        let remain = quota - usedB
 
-        if (B > remain) B = remain
+        if (B > remain) {
+          B = Math.max(0, remain)
+        }
 
         let total = 30 + B
 
@@ -250,9 +258,9 @@ FGI = ${value}
 
           fgi: fgiValue,
 
-          B,
+          B: B,
 
-          total,
+          total: total,
         })
 
         localStorage.setItem(
@@ -264,10 +272,38 @@ FGI = ${value}
         show()
       }
 
-      function show() {
-        let usedTotal = records.reduce((a, b) => a + b.total, 0)
+      // 計算前月剩餘B
 
-        fund.innerHTML = `
+      function getCarry(month) {
+        let carry = 0
+
+        for (let m = 7; m < month; m++) {
+          let quota = monthlyB[m] || 0
+
+          let used = records
+
+            .filter(x => new Date(x.date).getMonth() + 1 === m)
+
+            .reduce((a, b) => a + b.B, 0)
+
+          carry += Math.max(0, quota - used)
+        }
+
+        return carry
+      }
+
+      function show() {
+        // 每次刷新重新抓資料
+
+        records = JSON.parse(localStorage.getItem('btc_records') || '[]')
+
+        let usedTotal = records.reduce(
+          (a, b) => a + b.total,
+
+          0,
+        )
+
+        document.getElementById('fund').innerHTML = `
 
 已投入：
 
@@ -292,7 +328,50 @@ USDT
 
 <b>${((usedTotal / totalBudget) * 100).toFixed(1)}%</b>
 
+
 `
+
+        // 今日狀態
+
+        let today = todayInvested()
+
+        if (today) {
+          document.getElementById('result').innerHTML = `
+
+<h3>✅ 今日已投入</h3>
+
+今日投入：
+
+<div class="big">
+
+${today.total} USDT
+
+</div>
+
+
+FGI：
+
+${today.fgi}
+
+
+<br>
+
+B加碼：
+
+${today.B}
+
+`
+        } else {
+          document.getElementById('result').innerHTML = `
+
+<h3>⏳ 今日尚未投入</h3>
+
+等待計算
+
+`
+        }
+
+        // 歷史紀錄
 
         let html = ''
 
@@ -309,19 +388,21 @@ USDT
 
 <td>${x.total}</td>
 
+
 </tr>
+
 
 `
         })
 
-        history.innerHTML = html
+        document.getElementById('history').innerHTML = html
+
+        // 月份資訊
 
         let mhtml = ''
 
         for (let m = 7; m <= 11; m++) {
-          let carry = getMonthInfo(m)
-
-          let quota = monthlyB[m] + carry
+          let quota = (monthlyB[m] || 0) + getCarry(m)
 
           let usedB = records
 
@@ -358,20 +439,13 @@ ${usedB}
 <br>
 
 剩餘B：
-<span class="${quota - usedB > 0 ? 'green' : 'red'}">
-
 ${quota - usedB}
-
-</span>
 
 
 <br><br>
 
-
 當月投入：
-
 ${total} USDT
-
 
 
 </div>
@@ -380,12 +454,12 @@ ${total} USDT
 `
         }
 
-        monthly.innerHTML = mhtml
+        document.getElementById('monthly').innerHTML = mhtml
       }
 
       function clearData() {
-        if (confirm('確定清除？')) {
-          localStorage.clear()
+        if (confirm('確定清除紀錄？')) {
+          localStorage.removeItem('btc_records')
 
           records = []
 
@@ -393,7 +467,7 @@ ${total} USDT
         }
       }
 
-      date.value = new Date()
+      document.getElementById('date').value = new Date()
 
         .toISOString()
 
